@@ -1,9 +1,13 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:getmarried/core/auth/token_storage.dart';
 import 'package:getmarried/core/config/app_config.dart';
 
 class ApiClient {
-  ApiClient(this._tokenStorage) {
+  ApiClient(this._tokenStorage, {String Function()? localeResolver}) {
+    _localeResolver = localeResolver;
     _dio = Dio(
       BaseOptions(
         baseUrl: AppConfig.baseUrl,
@@ -20,6 +24,8 @@ class ApiClient {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          final locale = _localeResolver?.call() ?? 'bn';
+          options.headers['Accept-Language'] = locale;
           handler.next(options);
         },
       ),
@@ -28,6 +34,11 @@ class ApiClient {
 
   final TokenStorage _tokenStorage;
   late final Dio _dio;
+  String Function()? _localeResolver;
+
+  void setLocaleResolver(String Function() resolver) {
+    _localeResolver = resolver;
+  }
 
   Dio get dio => _dio;
 
@@ -71,6 +82,73 @@ class ApiClient {
     }
   }
 
+  Future<Map<String, dynamic>> postMultipart(String path, FormData formData) async {
+    try {
+      final response = await _dio.post(
+        path,
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+      return _unwrap(response.data);
+    } on DioException catch (e) {
+      throw _fromDio(e);
+    }
+  }
+
+  Future<FileDownload> download(String path, {Map<String, dynamic>? query}) async {
+    try {
+      final token = await _tokenStorage.getToken();
+      final response = await _dio.get<List<int>>(
+        path,
+        queryParameters: query,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: token != null && token.isNotEmpty ? {'Authorization': 'Bearer $token'} : null,
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+
+      final contentType = response.headers.value('content-type') ?? '';
+      final bytes = response.data;
+
+      if (response.statusCode != 200 || bytes == null) {
+        throw _bytesError(bytes, response.statusCode);
+      }
+
+      if (contentType.contains('application/json')) {
+        throw _bytesError(bytes, response.statusCode);
+      }
+
+      final filename = _filenameFromHeaders(response.headers) ?? 'download.pdf';
+      return FileDownload(Uint8List.fromList(bytes), filename);
+    } on DioException catch (e) {
+      throw _fromDio(e);
+    }
+  }
+
+  ApiException _bytesError(List<int>? bytes, int? statusCode) {
+    if (bytes != null && bytes.isNotEmpty) {
+      try {
+        final json = jsonDecode(utf8.decode(bytes));
+        if (json is Map<String, dynamic>) {
+          return ApiException(
+            json['message']?.toString() ?? 'Download failed',
+            errors: json['errors'],
+            statusCode: statusCode,
+          );
+        }
+      } catch (_) {}
+    }
+    return ApiException('Download failed', statusCode: statusCode);
+  }
+
+  String? _filenameFromHeaders(Headers headers) {
+    final disposition = headers.value('content-disposition');
+    if (disposition == null) return null;
+    final match = RegExp(r'filename="?([^";]+)"?').firstMatch(disposition);
+    return match?.group(1);
+  }
+
   Future<Map<String, dynamic>> delete(String path) async {
     try {
       final response = await _dio.delete(path);
@@ -104,6 +182,13 @@ class ApiClient {
     }
     return ApiException(e.message ?? 'Network error', statusCode: e.response?.statusCode);
   }
+}
+
+class FileDownload {
+  FileDownload(this.bytes, this.filename);
+
+  final Uint8List bytes;
+  final String filename;
 }
 
 class ApiException implements Exception {

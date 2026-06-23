@@ -1,4 +1,5 @@
 import 'package:getmarried/core/api/api_client.dart';
+import 'package:getmarried/core/models/app_ui_config.dart';
 
 class MetaRepository {
   MetaRepository(this._api);
@@ -38,5 +39,15 @@ class MetaRepository {
   Future<Map<String, dynamic>> packages() async {
     final r = await _api.get('/meta/packages');
     return extractMap(r['data']);
+  }
+
+  Future<AppUiConfig> appUi() async {
+    final r = await _api.get('/meta/app-ui');
+    return AppUiConfig.fromJson(extractMap(r['data']));
+  }
+
+  Future<List<dynamic>> languages() async {
+    final r = await _api.get('/meta/languages');
+    return extractList(r['data']);
   }
 }

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:getmarried/core/api/api_client.dart';
 import 'package:getmarried/core/providers/app_providers.dart';
+import 'package:getmarried/core/providers/app_providers.dart';
+import 'package:getmarried/l10n/app_localizations.dart';
 import 'package:image_picker/image_picker.dart';
 
 class BiodataWizardScreen extends ConsumerStatefulWidget {
@@ -37,6 +39,7 @@ class _BiodataWizardScreenState extends ConsumerState<BiodataWizardScreen> {
   int? _presUpazilaId;
   bool _showImage = true;
   String? _imagePath;
+  String? _contentLanguage;
 
   final _birthDate = TextEditingController();
   final _heightFoot = TextEditingController();
@@ -163,6 +166,7 @@ class _BiodataWizardScreenState extends ConsumerState<BiodataWizardScreen> {
           'weight': _weight.text.trim(),
           'blood_group': _bloodGroup.text.trim(),
           'nationality': _nationalityId,
+          if (_contentLanguage != null) 'content_language': _contentLanguage,
         });
       } else if (_step == 1) {
         await repo.saveAddress({
@@ -212,7 +216,7 @@ class _BiodataWizardScreenState extends ConsumerState<BiodataWizardScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Biodata saved successfully')),
+            SnackBar(content: Text(AppLocalizations.of(context).biodataSaved)),
           );
           Navigator.of(context).pop(true);
         }
@@ -247,15 +251,17 @@ class _BiodataWizardScreenState extends ConsumerState<BiodataWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     if (_loadingMeta) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Create Biodata')),
+        appBar: AppBar(title: Text(l10n.createBiodata)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Biodata — Step ${_step + 1}/4')),
+      appBar: AppBar(title: Text(l10n.biodataStep(_step + 1))),
       body: Column(
         children: [
           LinearProgressIndicator(value: (_step + 1) / 4),
@@ -267,14 +273,14 @@ class _BiodataWizardScreenState extends ConsumerState<BiodataWizardScreen> {
                 if (_step > 0)
                   OutlinedButton(
                     onPressed: _saving ? null : () => setState(() => _step--),
-                    child: const Text('Back'),
+                    child: Text(l10n.back),
                   ),
                 const Spacer(),
                 FilledButton(
                   onPressed: _saving ? null : _saveStep,
                   child: _saving
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(_step == 3 ? 'Finish' : 'Save & Next'),
+                      : Text(_step == 3 ? l10n.finish : l10n.saveNext),
                 ),
               ],
             ),
@@ -294,9 +300,27 @@ class _BiodataWizardScreenState extends ConsumerState<BiodataWizardScreen> {
   }
 
   Widget _generalStep() {
+    final l10n = AppLocalizations.of(context);
+    final languagesAsync = ref.watch(languagesProvider);
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Text(l10n.writeInYourLanguage, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 8),
+        languagesAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (languages) => DropdownButtonFormField<String>(
+            value: _contentLanguage,
+            decoration: InputDecoration(labelText: l10n.contentLanguage, border: const OutlineInputBorder()),
+            items: languages
+                .map((l) => DropdownMenuItem(value: l.code, child: Text(l.name)))
+                .toList(),
+            onChanged: (v) => setState(() => _contentLanguage = v),
+          ),
+        ),
+        const SizedBox(height: 16),
         _dropdown('Biodata Type', _types, _biodataTypeId, (v) => setState(() => _biodataTypeId = v)),
         _dropdown('Marital Status', _marital, _maritalId, (v) => setState(() => _maritalId = v)),
         _dropdown('Nationality', _countries, _nationalityId, (v) => setState(() => _nationalityId = v), labelKey: 'nationality'),
@@ -369,7 +393,7 @@ class _BiodataWizardScreenState extends ConsumerState<BiodataWizardScreen> {
   Widget _questionField(Map<String, dynamic> question) {
     final id = question['id'] as int;
     final type = question['type'] as int? ?? 1;
-    final label = question['question']?.toString() ?? question['question_bn']?.toString() ?? '';
+    final label = question['question']?.toString() ?? '';
 
     if (type == 2) {
       final opts = _optionsForQuestion(id);

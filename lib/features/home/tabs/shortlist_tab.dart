@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:getmarried/core/locale/l10n_extension.dart';
 import 'package:getmarried/core/providers/app_providers.dart';
+import 'package:getmarried/core/theme/app_colors.dart';
 import 'package:getmarried/features/profile/biodata_detail_screen.dart';
+import 'package:getmarried/shared/widgets/profile_cards.dart';
 
 class ShortlistTab extends ConsumerStatefulWidget {
   const ShortlistTab({super.key});
@@ -32,25 +35,38 @@ class _ShortlistTabState extends ConsumerState<ShortlistTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_items.isEmpty) return const Center(child: Text('Shortlist is empty'));
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (_items.isEmpty) {
+      final l10n = context.l10n;
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.favorite_border, size: 64, color: AppColors.primary.withValues(alpha: 0.4)),
+            const SizedBox(height: 16),
+            Text(l10n.shortlistEmpty, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(l10n.saveProfilesYouLike, style: const TextStyle(color: AppColors.textMuted)),
+          ],
+        ),
+      );
+    }
 
     return RefreshIndicator(
+      color: AppColors.primary,
       onRefresh: _load,
       child: ListView.builder(
+        padding: const EdgeInsets.only(top: 8, bottom: 16),
         itemCount: _items.length,
         itemBuilder: (context, index) {
           final item = _items[index] as Map<String, dynamic>;
           final slug = item['slug']?.toString() ?? '';
-          return ListTile(
-            title: Text(item['biodata_no']?.toString() ?? ''),
-            subtitle: Text(item['district_name']?.toString() ?? ''),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: slug.isEmpty
-                ? null
-                : () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => BiodataDetailScreen(slug: slug)),
-                    ),
+          return ProfileCardList(
+            item: item,
+            onTap: slug.isEmpty ? () {} : () => Navigator.push(context, MaterialPageRoute(builder: (_) => BiodataDetailScreen(slug: slug))),
+            onViewProfile: slug.isEmpty ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => BiodataDetailScreen(slug: slug))),
           );
         },
       ),

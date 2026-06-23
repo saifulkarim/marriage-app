@@ -25,8 +25,9 @@ class BillingRepository {
     return _paymentUrl(r['data']);
   }
 
-  Future<void> requestUnlock(String interestSlug) async {
-    await _api.post('/billing/unlock/$interestSlug');
+  Future<Map<String, dynamic>> requestUnlock(String interestSlug) async {
+    final r = await _api.post('/billing/unlock/$interestSlug');
+    return extractMap(r['data']);
   }
 
   String _paymentUrl(dynamic data) {

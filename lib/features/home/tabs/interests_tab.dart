@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:getmarried/core/api/api_client.dart';
+import 'package:getmarried/core/locale/l10n_extension.dart';
 import 'package:getmarried/core/providers/app_providers.dart';
 import 'package:getmarried/features/profile/biodata_detail_screen.dart';
 
@@ -57,12 +58,13 @@ class _InterestsTabState extends ConsumerState<InterestsTab> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
+    final l10n = context.l10n;
 
     return Column(
       children: [
         TabBar(
           controller: _tabController,
-          tabs: const [Tab(text: 'Sent'), Tab(text: 'Received')],
+          tabs: [Tab(text: l10n.sent), Tab(text: l10n.received)],
         ),
         Expanded(
           child: TabBarView(
@@ -78,7 +80,7 @@ class _InterestsTabState extends ConsumerState<InterestsTab> with SingleTickerPr
   }
 
   Widget _buildList(List<dynamic> items, {required bool isReceived}) {
-    if (items.isEmpty) return const Center(child: Text('No interests yet'));
+    if (items.isEmpty) return Center(child: Text(context.l10n.noInterestsYet));
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -93,14 +95,14 @@ class _InterestsTabState extends ConsumerState<InterestsTab> with SingleTickerPr
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: ListTile(
-              title: Text(biodata?['biodata_no']?.toString() ?? item['status_label']?.toString() ?? 'Interest'),
+              title: Text(biodata?['biodata_no']?.toString() ?? item['status_label']?.toString() ?? context.l10n.interest),
               subtitle: Text(item['status_label']?.toString() ?? ''),
               onTap: biodataSlug.isEmpty
                   ? null
                   : () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => BiodataDetailScreen(slug: biodataSlug)),
                       ),
-              trailing: _actions(slug, item['status'] as int? ?? 0, isReceived),
+              trailing: _actions(slug, biodataSlug, item['status'] as int? ?? 0, isReceived),
             ),
           );
         },
@@ -108,8 +110,8 @@ class _InterestsTabState extends ConsumerState<InterestsTab> with SingleTickerPr
     );
   }
 
-  Widget? _actions(String slug, int status, bool isReceived) {
-    if (slug.isEmpty) return null;
+  Widget? _actions(String interestSlug, String biodataSlug, int status, bool isReceived) {
+    if (interestSlug.isEmpty) return null;
     final repo = ref.read(interactionRepositoryProvider);
 
     if (isReceived && status == 0) {
@@ -118,11 +120,11 @@ class _InterestsTabState extends ConsumerState<InterestsTab> with SingleTickerPr
         children: [
           IconButton(
             icon: const Icon(Icons.check, color: Colors.green),
-            onPressed: () => _action(() => repo.acceptInterest(slug)),
+            onPressed: () => _action(() => repo.acceptInterest(interestSlug)),
           ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.red),
-            onPressed: () => _action(() => repo.rejectInterest(slug)),
+            onPressed: () => _action(() => repo.rejectInterest(interestSlug)),
           ),
         ],
       );
@@ -131,18 +133,76 @@ class _InterestsTabState extends ConsumerState<InterestsTab> with SingleTickerPr
     if (!isReceived && status == 0) {
       return IconButton(
         icon: const Icon(Icons.undo),
-        onPressed: () => _action(() => repo.withdrawInterest(slug)),
+        onPressed: () => _action(() => repo.withdrawInterest(interestSlug)),
       );
     }
 
-    if (status == 1) {
+    if (status == 1 && biodataSlug.isNotEmpty) {
       return IconButton(
         icon: const Icon(Icons.lock_open),
-        tooltip: 'Request unlock',
-        onPressed: () => _action(() => ref.read(billingRepositoryProvider).requestUnlock(slug)),
+        tooltip: context.l10n.unlockContact,
+        onPressed: () => _unlockContact(interestSlug, biodataSlug),
       );
     }
 
     return null;
+  }
+
+  Future<void> _unlockContact(String interestSlug, String biodataSlug) async {
+    try {
+      final billing = ref.read(billingRepositoryProvider);
+      final profile = ref.read(profileRepositoryProvider);
+      final result = await billing.requestUnlock(interestSlug);
+      final unlockStatus = result['status']?.toString() ?? result['unlock']?['status']?.toString() ?? '';
+
+      if (unlockStatus == 'pending_guardian') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.waitingGuardian)),
+          );
+        }
+        return;
+      }
+
+      if (unlockStatus == 'completed') {
+        await _showContact(biodataSlug);
+        return;
+      }
+
+      final contact = await profile.completeUnlock(interestSlug);
+      if (mounted) _showContactDialog(contact);
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _showContact(String biodataSlug) async {
+    try {
+      final contact = await ref.read(profileRepositoryProvider).viewContact(biodataSlug);
+      if (mounted) _showContactDialog(contact);
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  void _showContactDialog(Map<String, dynamic> contact) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.l10n.contactInfo),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (contact['name'] != null) Text('Name: ${contact['name']}'),
+            if (contact['contact_no'] != null) Text('Phone: ${contact['contact_no']}'),
+            if (contact['email'] != null) Text('Email: ${contact['email']}'),
+            if (contact['gurdians_mobile_no'] != null) Text('Guardian: ${contact['gurdians_mobile_no']}'),
+          ],
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.l10n.close))],
+      ),
+    );
   }
 }

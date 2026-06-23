@@ -9,4 +9,19 @@ class AppConfig {
 
   static const String apiPrefix = '/api/v1/mobile';
   static String get baseUrl => '$apiBaseUrl$apiPrefix';
+
+  /// Google OAuth Web client ID (Android serverClientId). Create in Google Cloud Console.
+  static const String googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '',
+  );
+
+  /// Google OAuth iOS client ID. Add the reversed client ID to iOS URL schemes when using native config.
+  static const String googleIosClientId = String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+    defaultValue: '',
+  );
+
+  static bool get isGoogleSignInConfigured =>
+      googleServerClientId.isNotEmpty || googleIosClientId.isNotEmpty;
 }

@@ -80,8 +80,38 @@ class AuthRepository {
     return response['data'] as Map<String, dynamic>;
   }
 
+  Future<void> updateLocale(String locale) async {
+    await _api.put('/auth/locale', body: {'locale': locale});
+  }
+
   Future<bool> needsVerification() async {
     final user = await me();
     return user['email_verified'] != true;
+  }
+
+  Future<Map<String, dynamic>> googleLogin({
+    required String providerId,
+    required String email,
+    required String name,
+  }) async {
+    final response = await _api.post('/auth/google', body: {
+      'provider_id': providerId,
+      'email': email,
+      'name': name,
+      'device_name': 'flutter-app',
+    });
+    final data = response['data'] as Map<String, dynamic>;
+    await _tokenStorage.saveToken(data['token'] as String);
+    return data;
+  }
+
+  Future<void> changePassword({
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    await _api.post('/auth/change-password', body: {
+      'password': password,
+      'password_confirmation': passwordConfirmation,
+    });
   }
 }
